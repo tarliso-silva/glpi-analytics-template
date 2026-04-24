@@ -1,0 +1,164 @@
+// =============================================================================
+// File: measures.dax
+// Description: Core DAX measures for the GLPI Power BI analytics template.
+//              Paste these measures into your Power BI Desktop model or import
+//              them via the "Enter Data" / "New Measure" workflow.
+//
+// Table referenced: vw_glpi_tickets  (imported from the SQL view)
+// =============================================================================
+
+
+// -----------------------------------------------------------------------------
+// SECTION 1 — Ticket Counts
+// -----------------------------------------------------------------------------
+
+// Total number of tickets in the current filter context
+[Total Tickets] =
+COUNTROWS( vw_glpi_tickets )
+
+
+// Tickets with status = Open (New + Processing + Pending)
+[Open Tickets] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    vw_glpi_tickets[status_label] IN { "New", "Processing (assigned)", "Processing (planned)", "Pending" }
+)
+
+
+// Tickets that have been resolved or closed
+[Closed Tickets] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    vw_glpi_tickets[status_label] IN { "Solved", "Closed" }
+)
+
+
+// Tickets opened in the selected date range
+[Tickets Created] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    USERELATIONSHIP( 'Date'[Date], vw_glpi_tickets[created_at] )
+)
+
+
+// Tickets closed/solved in the selected date range
+[Tickets Resolved] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    USERELATIONSHIP( 'Date'[Date], vw_glpi_tickets[resolved_at] )
+)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 2 — SLA Metrics
+// -----------------------------------------------------------------------------
+
+// Number of tickets resolved within the agreed SLA window
+[SLA Compliant Tickets] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    vw_glpi_tickets[sla_status] = "Within SLA"
+)
+
+
+// Number of tickets that breached SLA (resolved late or still open and overdue)
+[SLA Breached Tickets] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    vw_glpi_tickets[sla_status] IN { "Breached", "Breached (open)" }
+)
+
+
+// SLA compliance rate as a percentage
+[SLA Compliance Rate %] =
+DIVIDE(
+    [SLA Compliant Tickets],
+    [SLA Compliant Tickets] + [SLA Breached Tickets],
+    BLANK()
+)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 3 — Resolution Time (MTTR)
+// -----------------------------------------------------------------------------
+
+// Average resolution time in minutes across resolved tickets
+[Avg Resolution Time (min)] =
+CALCULATE(
+    AVERAGEX(
+        FILTER( vw_glpi_tickets, NOT ISBLANK( vw_glpi_tickets[resolution_time_minutes] ) ),
+        vw_glpi_tickets[resolution_time_minutes]
+    )
+)
+
+
+// Average resolution time converted to hours for readability
+[Avg Resolution Time (hrs)] =
+DIVIDE( [Avg Resolution Time (min)], 60, BLANK() )
+
+
+// Median resolution time in minutes (uses PERCENTILE function)
+[Median Resolution Time (min)] =
+CALCULATE(
+    PERCENTILE.INC( vw_glpi_tickets[resolution_time_minutes], 0.5 )
+)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 4 — Backlog & Ageing
+// -----------------------------------------------------------------------------
+
+// Tickets that have been open for more than 7 days without resolution.
+// Uses a calculated column [Days Open] = DATEDIFF(vw_glpi_tickets[created_at], TODAY(), DAY)
+// if available, or evaluates inline via FILTER with DATEDIFF.
+[Aged Tickets (> 7 days)] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    vw_glpi_tickets[status_label] IN { "New", "Processing (assigned)", "Processing (planned)", "Pending" },
+    DATEDIFF( vw_glpi_tickets[created_at], TODAY(), DAY ) > 7
+)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 5 — Productivity
+// -----------------------------------------------------------------------------
+
+// Distinct technicians who closed at least one ticket in context
+[Active Technicians] =
+DISTINCTCOUNT( vw_glpi_tickets[technician_id] )
+
+
+// Average tickets closed per active technician
+[Tickets per Technician] =
+DIVIDE( [Closed Tickets], [Active Technicians], BLANK() )
+
+
+// -----------------------------------------------------------------------------
+// SECTION 6 — Period Comparisons (requires a 'Date' dimension table)
+// -----------------------------------------------------------------------------
+
+// Tickets created in the same period of the previous month
+[Tickets Created (Prev Month)] =
+CALCULATE(
+    [Tickets Created],
+    DATEADD( 'Date'[Date], -1, MONTH )
+)
+
+
+// Month-over-month change in created tickets
+[MoM Ticket Change] =
+[Tickets Created] - [Tickets Created (Prev Month)]
+
+
+// Month-over-month change as a percentage
+[MoM Ticket Change %] =
+DIVIDE(
+    [MoM Ticket Change],
+    [Tickets Created (Prev Month)],
+    BLANK()
+)
+
+
+// =============================================================================
+// End of measures.dax
+// =============================================================================
