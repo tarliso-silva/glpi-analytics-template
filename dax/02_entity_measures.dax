@@ -1,0 +1,137 @@
+// =============================================================================
+// File: 02_entity_measures.dax
+// Domain: Entidades geográficas (Empresa / Matriz / Filiais) + Racks
+// Tables: vw_entity_overview, vw_entity_sla_monthly, vw_entity_asset_distribution,
+//         vw_entity_project_performance, vw_rack_inventory
+// =============================================================================
+
+
+// -----------------------------------------------------------------------------
+// SECTION 7 — Análise por Entidade / Filial
+// -----------------------------------------------------------------------------
+
+// Total de tickets da entidade selecionada (contexto de filtro)
+[Entity Tickets] =
+SUM( vw_entity_overview[total_tickets] )
+
+// Tempo médio de resolução em horas para a entidade
+[Entity Avg Resolution (hrs)] =
+AVERAGE( vw_entity_overview[avg_resolution_hours] )
+
+// Conformidade SLA calculada a partir da view mensal por entidade
+[Entity SLA Compliance %] =
+DIVIDE(
+    SUM( vw_entity_sla_monthly[within_sla] ),
+    SUM( vw_entity_sla_monthly[within_sla] ) + SUM( vw_entity_sla_monthly[breached_sla] ),
+    BLANK()
+)
+
+// Tickets que violaram SLA no contexto de entidade/mês
+[Entity SLA Breached] =
+SUM( vw_entity_sla_monthly[breached_sla] )
+
+// Valor total dos ativos da entidade selecionada
+[Entity Asset Value] =
+SUM( vw_entity_asset_distribution[total_value] )
+
+// Participação percentual da entidade no total de ativos
+[Entity Asset Share %] =
+DIVIDE(
+    SUM( vw_entity_asset_distribution[asset_count] ),
+    CALCULATE( SUM(vw_entity_asset_distribution[asset_count]), ALL(vw_entity_asset_distribution) ),
+    BLANK()
+)
+
+// Entidade com maior volume de tickets (para cards e tooltips)
+[Top Entity by Tickets] =
+MAXX(
+    TOPN( 1, vw_entity_overview, vw_entity_overview[total_tickets], DESC ),
+    vw_entity_overview[entity_name]
+)
+
+// Entidade com pior conformidade SLA no período filtrado
+[Worst SLA Entity] =
+VAR _summary =
+    ADDCOLUMNS(
+        VALUES( vw_entity_sla_monthly[entity_name] ),
+        "@compliance",
+        DIVIDE(
+            CALCULATE( SUM(vw_entity_sla_monthly[within_sla]) ),
+            CALCULATE( SUM(vw_entity_sla_monthly[within_sla]) ) +
+            CALCULATE( SUM(vw_entity_sla_monthly[breached_sla]) ),
+            1
+        )
+    )
+RETURN
+    MAXX( TOPN( 1, _summary, [@compliance], ASC ), [entity_name] )
+
+// Ícone semáforo por entidade (para scorecard de filiais)
+[Entity SLA Icon] =
+SWITCH( TRUE(),
+    [Entity SLA Compliance %] >= 0.90, "✓",
+    [Entity SLA Compliance %] >= 0.80, "⚠",
+    "🔴"
+)
+
+// Variação MoM da SLA da entidade
+[Entity SLA MoM Change] =
+[Entity SLA Compliance %] -
+CALCULATE(
+    [Entity SLA Compliance %],
+    DATEADD( vw_entity_sla_monthly[period_date], -1, MONTH )
+)
+
+// Total de projetos ativos na entidade
+[Entity Active Projects] =
+CALCULATE(
+    COUNTROWS( vw_entity_project_performance ),
+    vw_entity_project_performance[completed_tasks] < vw_entity_project_performance[total_tasks]
+)
+
+// Taxa de conclusão de tarefas de projeto na entidade
+[Entity Project Task Completion %] =
+DIVIDE(
+    SUM( vw_entity_project_performance[completed_tasks] ),
+    SUM( vw_entity_project_performance[total_tasks] ),
+    BLANK()
+)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 8 — Racks / Data Center
+// -----------------------------------------------------------------------------
+
+// Total de itens instalados em racks
+[Rack Items] =
+COUNTROWS( vw_rack_inventory )
+
+// Total de incidentes vinculados a ativos nos racks
+[Rack Linked Incidents] =
+SUM( vw_rack_inventory[incident_count] )
+
+// Ativos com pelo menos 1 incidente vinculado
+[Rack Assets with Incidents] =
+CALCULATE(
+    COUNTROWS( vw_rack_inventory ),
+    vw_rack_inventory[incident_count] > 0
+)
+
+// Posições de rack ocupadas (slots com ativo atribuído)
+[Rack Utilisation] =
+CALCULATE(
+    COUNTROWS( vw_rack_inventory ),
+    NOT ISBLANK( vw_rack_inventory[asset_name] )
+)
+
+// Rack com mais incidentes (para tooltip / card)
+[Hottest Rack] =
+MAXX(
+    TOPN( 1,
+        ADDCOLUMNS(
+            VALUES( vw_rack_inventory[rack_name] ),
+            "@incidents", CALCULATE( SUM(vw_rack_inventory[incident_count]) )
+        ),
+        [@incidents], DESC
+    ),
+    [rack_name]
+)

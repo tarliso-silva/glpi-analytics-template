@@ -160,5 +160,98 @@ DIVIDE(
 
 
 // =============================================================================
+// SECTION 7 — Entity / Geographic Analysis
+// Requires: vw_entity_overview, vw_entity_sla_monthly, vw_entity_asset_distribution
+//           loaded as separate tables in Power BI.
+//           Use vw_glpi_tickets[entity_name] for slicer cross-filtering.
+// =============================================================================
+
+// Tickets for the currently filtered entity (uses vw_entity_overview)
+[Entity Tickets] =
+SUM( vw_entity_overview[total_tickets] )
+
+
+// Average resolution hours for the selected entity
+[Entity Avg Resolution (hrs)] =
+AVERAGE( vw_entity_overview[avg_resolution_hours] )
+
+
+// SLA compliance rate from the entity-monthly view
+[Entity SLA Compliance %] =
+DIVIDE(
+    SUM( vw_entity_sla_monthly[within_sla] ),
+    SUM( vw_entity_sla_monthly[within_sla] ) + SUM( vw_entity_sla_monthly[breached_sla] ),
+    BLANK()
+)
+
+
+// Breached tickets in current entity/month filter context
+[Entity SLA Breached] =
+SUM( vw_entity_sla_monthly[breached_sla] )
+
+
+// Total asset financial value for the selected entity
+[Entity Asset Value] =
+SUM( vw_entity_asset_distribution[total_value] )
+
+
+// Share of total asset count held by the selected entity
+[Entity Asset Share %] =
+DIVIDE(
+    SUM( vw_entity_asset_distribution[asset_count] ),
+    CALCULATE( SUM( vw_entity_asset_distribution[asset_count] ), ALL( vw_entity_asset_distribution ) ),
+    BLANK()
+)
+
+
+// Entity with the highest ticket volume (used in KPI cards / tooltips)
+[Top Entity by Tickets] =
+MAXX(
+    TOPN( 1, vw_entity_overview, vw_entity_overview[total_tickets], DESC ),
+    vw_entity_overview[entity_name]
+)
+
+
+// Entity with worst SLA compliance in the current filter period
+[Worst SLA Entity] =
+VAR _summary =
+    ADDCOLUMNS(
+        VALUES( vw_entity_sla_monthly[entity_name] ),
+        "@compliance",
+        DIVIDE(
+            CALCULATE( SUM( vw_entity_sla_monthly[within_sla] ) ),
+            CALCULATE( SUM( vw_entity_sla_monthly[within_sla] ) ) +
+            CALCULATE( SUM( vw_entity_sla_monthly[breached_sla] ) ),
+            1
+        )
+    )
+RETURN
+    MAXX( TOPN( 1, _summary, [@compliance], ASC ), [entity_name] )
+
+
+// -----------------------------------------------------------------------------
+// SECTION 8 — Rack / Data Center
+// Requires: vw_rack_inventory loaded as a table in Power BI.
+// -----------------------------------------------------------------------------
+
+// Total number of items installed across all racks
+[Rack Items] =
+COUNTROWS( vw_rack_inventory )
+
+
+// Total incidents linked to rack-installed assets
+[Rack Linked Incidents] =
+SUM( vw_rack_inventory[incident_count] )
+
+
+// Assets occupying rack units (excluding empty slots)
+[Rack Utilisation] =
+CALCULATE(
+    COUNTROWS( vw_rack_inventory ),
+    NOT ISBLANK( vw_rack_inventory[asset_name] )
+)
+
+
+// =============================================================================
 // End of measures.dax
 // =============================================================================

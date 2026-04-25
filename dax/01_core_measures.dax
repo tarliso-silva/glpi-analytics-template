@@ -1,0 +1,225 @@
+// =============================================================================
+// File: 01_core_measures.dax
+// Domain: Tickets, SLA, MTTR, Backlog, Produtividade, Comparações de período
+// Tables: vw_glpi_tickets, vw_fact_tickets, vw_backlog_open, vw_tech_productivity
+// =============================================================================
+
+
+// -----------------------------------------------------------------------------
+// SECTION 1 — Contagem de Tickets
+// -----------------------------------------------------------------------------
+
+[Total Tickets] =
+COUNTROWS( vw_glpi_tickets )
+
+[Open Tickets] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    vw_glpi_tickets[status_label] IN { "New", "Processing (assigned)", "Processing (planned)", "Pending" }
+)
+
+[Closed Tickets] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    vw_glpi_tickets[status_label] IN { "Solved", "Closed" }
+)
+
+[Tickets Created] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    USERELATIONSHIP( 'Date'[Date], vw_glpi_tickets[created_at] )
+)
+
+[Tickets Resolved] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    USERELATIONSHIP( 'Date'[Date], vw_glpi_tickets[resolved_at] )
+)
+
+// Taxa de resolução: tickets resolvidos ÷ tickets criados no mesmo período
+[Resolution Rate %] =
+DIVIDE( [Tickets Resolved], [Tickets Created], BLANK() )
+
+
+// -----------------------------------------------------------------------------
+// SECTION 2 — SLA
+// -----------------------------------------------------------------------------
+
+[SLA Compliant Tickets] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    vw_glpi_tickets[sla_status] = "Within SLA"
+)
+
+[SLA Breached Tickets] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    vw_glpi_tickets[sla_status] IN { "Breached", "Breached (open)" }
+)
+
+[SLA Compliance Rate %] =
+DIVIDE(
+    [SLA Compliant Tickets],
+    [SLA Compliant Tickets] + [SLA Breached Tickets],
+    BLANK()
+)
+
+// Variação MoM da conformidade SLA
+[SLA Compliance MoM Change] =
+[SLA Compliance Rate %] -
+CALCULATE(
+    [SLA Compliance Rate %],
+    DATEADD( 'Date'[Date], -1, MONTH )
+)
+
+// Ícone de status SLA para cartões KPI
+[SLA Status Icon] =
+SWITCH( TRUE(),
+    [SLA Compliance Rate %] >= 0.90, "✓",
+    [SLA Compliance Rate %] >= 0.80, "⚠",
+    "🔴"
+)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 3 — Tempo de Resolução (MTTR)
+// -----------------------------------------------------------------------------
+
+[Avg Resolution Time (min)] =
+CALCULATE(
+    AVERAGEX(
+        FILTER( vw_glpi_tickets, NOT ISBLANK( vw_glpi_tickets[resolution_time_minutes] ) ),
+        vw_glpi_tickets[resolution_time_minutes]
+    )
+)
+
+[Avg Resolution Time (hrs)] =
+DIVIDE( [Avg Resolution Time (min)], 60, BLANK() )
+
+[Median Resolution Time (min)] =
+CALCULATE(
+    PERCENTILE.INC( vw_glpi_tickets[resolution_time_minutes], 0.5 )
+)
+
+// P90 do tempo de resolução (90% dos tickets resolvidos em X minutos)
+[P90 Resolution Time (min)] =
+CALCULATE(
+    PERCENTILE.INC( vw_glpi_tickets[resolution_time_minutes], 0.9 )
+)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 4 — Backlog & Envelhecimento
+// -----------------------------------------------------------------------------
+
+[Aged Tickets (> 7 days)] =
+CALCULATE(
+    COUNTROWS( vw_glpi_tickets ),
+    vw_glpi_tickets[status_label] IN { "New", "Processing (assigned)", "Processing (planned)", "Pending" },
+    DATEDIFF( vw_glpi_tickets[created_at], TODAY(), DAY ) > 7
+)
+
+[Backlog 0-1d] =
+CALCULATE( COUNTROWS(vw_backlog_open), vw_backlog_open[age_days] <= 1 )
+
+[Backlog 2-7d] =
+CALCULATE( COUNTROWS(vw_backlog_open), vw_backlog_open[age_days] BETWEEN 2 AND 7 )
+
+[Backlog 8-30d] =
+CALCULATE( COUNTROWS(vw_backlog_open), vw_backlog_open[age_days] BETWEEN 8 AND 30 )
+
+[Backlog >30d] =
+CALCULATE( COUNTROWS(vw_backlog_open), vw_backlog_open[age_days] > 30 )
+
+[Avg Backlog Age (days)] =
+AVERAGE( vw_backlog_open[age_days] )
+
+
+// -----------------------------------------------------------------------------
+// SECTION 5 — Produtividade
+// -----------------------------------------------------------------------------
+
+[Active Technicians] =
+DISTINCTCOUNT( vw_glpi_tickets[technician_id] )
+
+[Tickets per Technician] =
+DIVIDE( [Closed Tickets], [Active Technicians], BLANK() )
+
+[Reopen Rate %] =
+DIVIDE(
+    CALCULATE( COUNTROWS(vw_fact_tickets), vw_fact_tickets[reopen_count] > 0 ),
+    [Total Tickets],
+    BLANK()
+)
+
+// Desvio padrão da carga de trabalho (indica balanceamento da equipe)
+[Workload Std Dev] =
+STDEV.P(
+    ADDCOLUMNS(
+        VALUES( vw_tech_productivity[technician_name] ),
+        "@tickets", CALCULATE( SUM(vw_tech_productivity[closed_tickets]) )
+    )[@tickets]
+)
+
+// Técnico de maior performance no período
+[Top Performer] =
+MAXX(
+    TOPN( 1, vw_tech_productivity, vw_tech_productivity[closed_tickets], DESC ),
+    vw_tech_productivity[technician_name]
+)
+
+// Dia da semana com maior volume de abertura de tickets
+[Peak Weekday] =
+MAXX(
+    TOPN( 1,
+        ADDCOLUMNS(
+            VALUES( vw_glpi_tickets[weekday_name] ),
+            "@cnt", CALCULATE( COUNTROWS(vw_glpi_tickets) )
+        ),
+        [@cnt], DESC
+    ),
+    [weekday_name]
+)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 6 — Comparações de Período
+// -----------------------------------------------------------------------------
+
+[Tickets Created (Prev Month)] =
+CALCULATE(
+    [Tickets Created],
+    DATEADD( 'Date'[Date], -1, MONTH )
+)
+
+[MoM Ticket Change] =
+[Tickets Created] - [Tickets Created (Prev Month)]
+
+[MoM Ticket Change %] =
+DIVIDE( [MoM Ticket Change], [Tickets Created (Prev Month)], BLANK() )
+
+// Média móvel de 3 meses para identificar tendência
+[3M Moving Avg] =
+AVERAGEX(
+    DATESINPERIOD( 'Date'[Date], LASTDATE('Date'[Date]), -3, MONTH ),
+    [Tickets Created]
+)
+
+// Crescimento ano a ano
+[YoY Ticket Growth %] =
+DIVIDE(
+    [Tickets Created] -
+    CALCULATE( [Tickets Created], DATEADD('Date'[Date], -1, YEAR) ),
+    CALCULATE( [Tickets Created], DATEADD('Date'[Date], -1, YEAR) ),
+    BLANK()
+)
+
+// Hoje: tickets criados e resolvidos
+[Tickets Created Today] =
+CALCULATE( [Tickets Created], 'Date'[Date] = TODAY() )
+
+[Tickets Resolved Today] =
+CALCULATE( [Tickets Resolved], 'Date'[Date] = TODAY() )
+
+[Today Resolution Rate] =
+DIVIDE( [Tickets Resolved Today], [Tickets Created Today], BLANK() )

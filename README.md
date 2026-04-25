@@ -1,89 +1,162 @@
 # GLPI Analytics Template
 
-A reusable analytics template for **GLPI** (IT Service Management system) focused on **Power BI** integration. This project provides a structured foundation for building dashboards and reports on top of GLPI data, covering SLA compliance, ticket backlog, agent productivity, and overall Service Desk operations.
+Template completo para análise de dados do **GLPI** (IT Service Management) no **Power BI** — cobrindo todos os domínios ITSM com indicadores, medidas DAX, especificações de dashboards com storytelling e pipeline de atualização automática.
 
-> **Important:** This is a pure analytics template — it contains no application code or web frameworks. All deliverables are SQL views, DAX measures, Power BI templates, and documentation.
+> **Stack**: MariaDB 10.7 · GLPI 10.x · Python 3.x · Power BI Desktop/Service
 
 ---
 
-## 📁 Folder Structure
+## Estrutura do projeto
 
 ```
 glpi-analytics-template/
-├── sql/          # SQL views for extracting and transforming GLPI data
-├── dax/          # DAX measure files for Power BI calculations
-├── powerbi/      # Power BI template files (.pbit) and layout references
-├── docs/         # Data model documentation and usage guides
-├── config/       # Project assumptions, environment settings, and configuration
-└── src/          # Optional helper scripts (e.g., Python/PowerShell for data refresh)
+│
+├── sql/              # 32 SQL views — camada analítica sobre o GLPI
+├── dax/              # Medidas DAX organizadas por domínio (85+ medidas)
+├── powerbi/          # Especificações completas de dashboards (storytelling)
+│   └── pages/        # 8 páginas com layout, visuais, DAX e navegação
+├── pipeline/         # Pipeline de deploy e refresh automático
+├── seed/             # Scripts Python para dataset de demonstração
+├── docs/             # Documentação do modelo de dados
+└── config/           # Configuração e premissas do ambiente
 ```
 
 ---
 
-## 🎯 Purpose
+## O que este template entrega
 
-GLPI stores all ITSM data (tickets, assets, users, SLAs, etc.) in a relational database. This template bridges that raw data with Power BI by providing:
+### 32 SQL Views prontas
+Organizadas em 5 grupos de dependência — do ticket base ao inventário de racks:
+- **Core**: `vw_glpi_tickets`, `vw_fact_tickets`
+- **Star Schema**: dims de categoria, técnico, grupo, SLA, ativo
+- **CMDB & ITIL**: problemas, mudanças, projetos, ativos
+- **Financeiro & SW**: licenças, contratos, infocoms, KB, satisfação
+- **Entidades & DC**: visão por filial, inventário de racks
 
-- **SQL Views** — pre-built queries that flatten and clean GLPI tables for BI consumption.
-- **DAX Measures** — reusable calculations for KPIs such as SLA breach rate, MTTR, first-call resolution, and ticket volume trends.
-- **Power BI Templates** — `.pbit` starter files with pre-configured data sources, relationships, and report pages.
-- **Documentation** — a data model guide that maps GLPI tables to the analytics layer.
-- **Configuration** — a central place to record assumptions (date ranges, priority mappings, SLA thresholds, etc.).
+### 85+ Medidas DAX
+| Arquivo | Domínio |
+|---|---|
+| `dax/01_core_measures.dax` | Tickets, SLA, MTTR, Backlog, Produtividade, Tendências |
+| `dax/02_entity_measures.dax` | Filiais geográficas, Racks/DC |
+| `dax/03_cmdb_measures.dax` | CMDB, Financeiro, Softwares, KB, Satisfação, ITIL, Projetos |
 
----
+### 8 Páginas de Dashboard (storytelling completo)
+Fluxo narrativo: **Situação → Complicação → Diagnóstico → Contexto**
 
-## 🚀 Getting Started
+| Página | Foco | Audiência |
+|---|---|---|
+| p01 Overview Executivo | KPIs globais + tendência de volume | C-Level |
+| p02 Desempenho de SLA | Violações por categoria, grupo, filial | Gestores de TI |
+| p03 Operações de Tickets | Backlog, ciclo de vida, funil | Coordenadores |
+| p04 Produtividade | Ranking de técnicos, scatter carga×MTTR | Supervisores |
+| p05 Tendências & Padrões | Série temporal, heatmap hora×dia, MoM | Analistas |
+| p06 Visão por Filial | Scorecard semáforo por entidade | Diretores regionais |
+| p07 CMDB & Ativos | Top ativos com incidentes, racks, licenças | Especialistas |
+| p08 Storytelling Flow | Guia narrativo + mapa de relacionamentos | Todos |
 
-### Prerequisites
+### Pipeline de atualização
+```bash
+# Implantar todas as views no banco
+python pipeline/deploy_views.py
 
-- GLPI (version 10.x recommended) with database access (MySQL/MariaDB)
-- Power BI Desktop (free download from Microsoft)
-- Read-only database credentials for the GLPI schema
-
-### Setup Steps
-
-1. **Create the SQL views** — run the scripts in `/sql` against your GLPI database to create the analytics views.
-2. **Connect Power BI** — open the `.pbit` template in `/powerbi` and point it at your GLPI database (or use DirectQuery / Import mode as appropriate).
-3. **Review DAX measures** — the measures in `/dax` are already embedded in the template; review and adjust thresholds to match your SLA agreements.
-4. **Read the docs** — consult `/docs/data-model.md` to understand table relationships and field definitions.
-5. **Adjust configuration** — update `/config/assumptions.md` with your environment-specific settings (database name, SLA targets, fiscal calendar, etc.).
-
----
-
-## 📊 Key Analytics Areas
-
-| Area | Description |
-|------|-------------|
-| **SLA Compliance** | % of tickets resolved within agreed time windows, broken down by priority and category |
-| **Ticket Backlog** | Open ticket age distribution, queue depth over time |
-| **Agent Productivity** | Tickets closed per agent per period, reassignment rate |
-| **Category Analysis** | Volume and resolution time by ticket category/subcategory |
-| **Trend Analysis** | Week-over-week and month-over-month ticket volume trends |
-
----
-
-## 📂 File Inventory
-
-| Path | Description |
-|------|-------------|
-| `sql/vw_glpi_tickets.sql` | Main SQL view combining ticket, user, group, and SLA data |
-| `dax/measures.dax` | Core DAX measures (SLA rate, MTTR, open/closed counts, etc.) |
-| `powerbi/README.md` | Instructions for using the Power BI template files |
-| `docs/data-model.md` | Entity-relationship overview and field dictionary |
-| `config/assumptions.md` | Project assumptions, SLA thresholds, and environment notes |
-| `src/README.md` | Guide for optional data refresh / ETL helper scripts |
+# Disparar refresh do dataset no Power BI Service
+python pipeline/powerbi_refresh.py --interval 300
+```
 
 ---
 
-## 🤝 Contributing
+## Início rápido
 
-1. Fork the repository.
-2. Add or improve SQL views in `/sql`, DAX measures in `/dax`, or documentation in `/docs`.
-3. Open a pull request with a clear description of what was changed and why.
+### Pré-requisitos
+- Docker Desktop (para rodar GLPI + MariaDB em containers)
+- Python 3.11+ com `mysql-connector-python`
+- Power BI Desktop (gratuito)
+
+### 1. Subir o ambiente
+
+```bash
+git clone https://github.com/tarliso-silva/glpi-analytics-template
+cd glpi-analytics-template
+cp .env.example .env   # ajuste as credenciais
+
+docker compose up -d   # sobe GLPI + MariaDB + PostgreSQL(DW)
+```
+
+### 2. Popular com dados de demonstração
+
+```bash
+python -m venv .venv ; .venv\Scripts\activate
+pip install mysql-connector-python
+
+python seed/seed_glpi.py
+python seed/seed_extended.py
+python seed/seed_expansion_1.py
+python seed/seed_expansion_2.py
+python seed/seed_expansion_3.py
+python seed/seed_expansion_4.py
+python seed/seed_racks.py
+python seed/refactor_entities.py
+python seed/validate_integrity.py   # deve reportar 0 erros
+```
+
+### 3. Implantar as views SQL
+
+```bash
+python pipeline/deploy_views.py
+# → 32 views criadas/atualizadas
+```
+
+### 4. Conectar o Power BI
+
+1. Abra o Power BI Desktop
+2. **Get Data → MySQL database** (ou MariaDB connector)
+3. Servidor: `localhost:3306` · Database: `glpi`
+4. Importe todas as views `vw_*`
+5. Importe as medidas DAX de `dax/01_core_measures.dax`
+6. Siga as especificações em `powerbi/pages/` para construir cada página
 
 ---
 
-## 📄 License
+## Dataset de demonstração
 
-This project is released under the [MIT License](LICENSE).
+| Categoria | Volume |
+|---|---|
+| Tickets (Jan/2024 – Dez/2025) | 1.071 |
+| Entidades geográficas | 5 (Empresa, Matriz, 3 Filiais) |
+| Usuários | 62 |
+| Ativos CMDB | 65 computadores + 12 rede + 30 monitores + ... |
+| Racks / Servidores | 3 racks × 42U no DC São Paulo |
+| Problemas / Mudanças | 25 / 18 |
+| Projetos | 6 |
+
+---
+
+## Roadmap
+
+- [x] Dataset de demonstração (1.071 tickets, estrutura ITIL)
+- [x] 32 SQL views cobrindo todos os domínios GLPI
+- [x] 85+ medidas DAX organizadas por domínio
+- [x] 8 especificações de página com storytelling
+- [x] Pipeline `deploy_views.py` + `powerbi_refresh.py`
+- [ ] Arquivo `.pbit` Power BI Template pronto para usar
+- [ ] Streaming Dataset (push em tempo real < 1 min)
+- [ ] DirectQuery setup guide com On-Premises Gateway
+- [ ] RLS (Row-Level Security) por filial
+- [ ] Tema customizado Power BI (JSON)
+
+---
+
+## Contribuindo
+
+1. Fork o repositório
+2. Crie uma branch: `git checkout -b feature/nome-da-feature`
+3. Commit: `git commit -m "feat: descrição"`
+4. Push: `git push origin feature/nome-da-feature`
+5. Abra um Pull Request
+
+---
+
+## Licença
+
+MIT — veja [LICENSE](LICENSE) para detalhes.
 

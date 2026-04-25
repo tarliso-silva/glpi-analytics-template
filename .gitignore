@@ -1,0 +1,35 @@
+# ============================================================
+# GLPI Analytics Template — .gitignore
+# ============================================================
+
+# Credenciais e variáveis de ambiente
+.env
+
+# Ambientes virtuais Python
+.venv/
+venv/
+env/
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+
+# Power BI (binários gerados — arquivos grandes, não versionados)
+*.pbix
+*.pbit
+
+# Arquivos de saída de scripts diagnósticos
+*.txt
+!config/*.txt
+!docs/*.txt
+
+# Editores e sistema
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+*~
+.idea/
+
+# Logs
+*.log

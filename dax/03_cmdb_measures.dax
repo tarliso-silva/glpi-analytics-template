@@ -1,0 +1,237 @@
+// =============================================================================
+// File: 03_cmdb_measures.dax
+// Domain: CMDB, Ativos, Softwares, Contratos, Financeiro, KB, Satisfação
+// Tables: vw_dim_asset, vw_cmdb_summary, vw_fact_asset_incidents,
+//         vw_fact_asset_financials, vw_fact_software_licenses,
+//         vw_fact_supplier_contracts, vw_fact_kb_usage,
+//         vw_fact_satisfaction_summary, vw_fact_problems, vw_fact_changes,
+//         vw_fact_projects, vw_fact_project_tasks
+// =============================================================================
+
+
+// -----------------------------------------------------------------------------
+// SECTION 9 — CMDB / Ativos
+// -----------------------------------------------------------------------------
+
+// Total de ativos cadastrados no CMDB
+[Total Assets] =
+DISTINCTCOUNT( vw_dim_asset[asset_id] )
+
+// Ativos com pelo menos 1 incidente no período
+[Assets with Incidents] =
+DISTINCTCOUNT( vw_fact_asset_incidents[asset_id] )
+
+// Percentual de ativos que geraram incidentes
+[Assets with Incidents %] =
+DIVIDE( [Assets with Incidents], [Total Assets], BLANK() )
+
+// Total de incidentes vinculados a ativos de CMDB
+[Total Asset Incidents] =
+SUM( vw_fact_asset_incidents[incident_count] )
+
+// Ativo com mais incidentes vinculados (para card de destaque)
+[Most Incident-Prone Asset] =
+MAXX(
+    TOPN( 1, vw_fact_asset_incidents, vw_fact_asset_incidents[incident_count], DESC ),
+    vw_fact_asset_incidents[asset_name]
+)
+
+// Contagem por tipo de ativo
+[Server Count] =
+CALCULATE( COUNTROWS(vw_dim_asset), vw_dim_asset[asset_type] = "Computer",
+           LEFT(vw_dim_asset[asset_name], 3) = "SRV" )
+
+[Desktop Count] =
+CALCULATE( COUNTROWS(vw_dim_asset), vw_dim_asset[asset_type] = "Computer",
+           LEFT(vw_dim_asset[asset_name], 2) = "WS" )
+
+[Network Equipment Count] =
+CALCULATE( COUNTROWS(vw_dim_asset), vw_dim_asset[asset_type] = "NetworkEquipment" )
+
+
+// -----------------------------------------------------------------------------
+// SECTION 10 — Financeiro / Contratos
+// -----------------------------------------------------------------------------
+
+// Valor total do patrimônio de TI (infocoms)
+[Total Asset Value] =
+SUM( vw_fact_asset_financials[value] )
+
+// Custo médio por ativo
+[Avg Asset Value] =
+AVERAGE( vw_fact_asset_financials[value] )
+
+// Valor de ativos por filial (usa entity_name do dim_asset)
+[Entity Asset Financial Value] =
+CALCULATE( SUM(vw_fact_asset_financials[value]) )
+
+// Valor total de contratos com fornecedores
+[Total Contract Value] =
+SUM( vw_fact_supplier_contracts[total_cost] )
+
+// Contratos vigentes (não vencidos)
+[Active Contracts] =
+CALCULATE(
+    COUNTROWS( vw_fact_supplier_contracts ),
+    vw_fact_supplier_contracts[end_date] >= TODAY()
+)
+
+// Contratos vencendo nos próximos 30 dias
+[Expiring Contracts (30d)] =
+CALCULATE(
+    COUNTROWS( vw_fact_supplier_contracts ),
+    vw_fact_supplier_contracts[end_date] BETWEEN TODAY() AND TODAY() + 30
+)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 11 — Softwares & Licenças
+// -----------------------------------------------------------------------------
+
+// Total de softwares únicos no inventário
+[Total Softwares] =
+DISTINCTCOUNT( vw_fact_software_licenses[software_id] )
+
+// Total de instalações ativas
+[Total Installations] =
+SUM( vw_fact_software_licenses[install_count] )
+
+// Licenças utilizadas vs. total disponível
+[License Utilization %] =
+DIVIDE(
+    SUM( vw_fact_software_licenses[install_count] ),
+    SUM( vw_fact_software_licenses[license_count] ),
+    BLANK()
+)
+
+// Licenças em excesso (instalações > licenças — risco de auditoria)
+[Over-Licensed Softwares] =
+CALCULATE(
+    COUNTROWS( vw_fact_software_licenses ),
+    vw_fact_software_licenses[install_count] > vw_fact_software_licenses[license_count]
+)
+
+// Licenças prestes a vencer (30 dias)
+[Expiring Licenses (30d)] =
+CALCULATE(
+    COUNTROWS( vw_fact_software_licenses ),
+    vw_fact_software_licenses[expire_date] <= TODAY() + 30,
+    vw_fact_software_licenses[expire_date] >= TODAY()
+)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 12 — Base de Conhecimento
+// -----------------------------------------------------------------------------
+
+// Total de artigos publicados na KB
+[Total KB Articles] =
+COUNTROWS( vw_fact_kb_usage )
+
+// Artigos com pelo menos 1 visualização no período
+[KB Articles Viewed] =
+CALCULATE(
+    COUNTROWS( vw_fact_kb_usage ),
+    vw_fact_kb_usage[view_count] > 0
+)
+
+// Taxa de adoção da KB (artigos visualizados ÷ total)
+[KB Adoption Rate %] =
+DIVIDE( [KB Articles Viewed], [Total KB Articles], BLANK() )
+
+// Total de visualizações de KB no período
+[Total KB Views] =
+SUM( vw_fact_kb_usage[view_count] )
+
+
+// -----------------------------------------------------------------------------
+// SECTION 13 — Satisfação do Usuário
+// -----------------------------------------------------------------------------
+
+// Nota média de satisfação (escala 1–5)
+[Avg Satisfaction Score] =
+AVERAGE( vw_fact_satisfaction_summary[avg_score] )
+
+// Total de avaliações recebidas
+[Total Ratings] =
+SUM( vw_fact_satisfaction_summary[total_ratings] )
+
+// Taxa de resposta: avaliações ÷ tickets resolvidos
+[Satisfaction Response Rate %] =
+DIVIDE( [Total Ratings], [Closed Tickets], BLANK() )
+
+// Avaliações negativas (score < 3)
+[Negative Ratings] =
+CALCULATE(
+    SUM( vw_fact_satisfaction_summary[total_ratings] ),
+    vw_fact_satisfaction_summary[avg_score] < 3
+)
+
+// % de avaliações negativas sobre o total
+[Negative Rating Rate %] =
+DIVIDE( [Negative Ratings], [Total Ratings], BLANK() )
+
+
+// -----------------------------------------------------------------------------
+// SECTION 14 — Problemas & Mudanças (ITIL)
+// -----------------------------------------------------------------------------
+
+// Total de problemas abertos
+[Open Problems] =
+CALCULATE(
+    COUNTROWS( vw_fact_problems ),
+    vw_fact_problems[status] <> "Closed"
+)
+
+// Problemas com tickets vinculados (impacto direto no service desk)
+[Problems with Linked Tickets] =
+CALCULATE(
+    COUNTROWS( vw_fact_problems ),
+    vw_fact_problems[linked_tickets] > 0
+)
+
+// Impacto médio de problemas (tickets vinculados por problema)
+[Avg Tickets per Problem] =
+AVERAGE( vw_fact_problems[linked_tickets] )
+
+// Mudanças em andamento (não concluídas)
+[Changes in Progress] =
+CALCULATE(
+    COUNTROWS( vw_fact_changes ),
+    vw_fact_changes[status] IN { "Processing", "Testing", "Approval" }
+)
+
+// Mudanças emergenciais (tipo = Emergency)
+[Emergency Changes] =
+CALCULATE(
+    COUNTROWS( vw_fact_changes ),
+    vw_fact_changes[type_label] = "Emergency"
+)
+
+
+// -----------------------------------------------------------------------------
+// SECTION 15 — Projetos
+// -----------------------------------------------------------------------------
+
+// Projetos ativos (não encerrados)
+[Active Projects] =
+CALCULATE(
+    COUNTROWS( vw_fact_projects ),
+    vw_fact_projects[status] <> "Closed"
+)
+
+// Taxa de conclusão de tarefas de projeto
+[Project Task Completion %] =
+DIVIDE(
+    CALCULATE( COUNTROWS(vw_fact_project_tasks), vw_fact_project_tasks[state] = "Done" ),
+    COUNTROWS( vw_fact_project_tasks ),
+    BLANK()
+)
+
+// Projetos com atraso (data fim planejada < hoje e ainda abertos)
+[Overdue Projects] =
+CALCULATE(
+    COUNTROWS( vw_fact_projects ),
+    vw_fact_projects[plan_end_date] < TODAY(),
+    vw_fact_projects[status] <> "Closed"
+)
