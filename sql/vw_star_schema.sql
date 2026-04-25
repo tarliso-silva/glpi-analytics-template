@@ -66,6 +66,9 @@ SELECT
     t.priority                                          AS priority_code,
     t.type                                              AS ticket_type_code,
 
+    -- Entidade (filial) — para filtro por Matriz/Filial no Power BI
+    t.entities_id                                       AS entity_id,
+
     -- Flags de estado
     CASE WHEN t.status IN (1,2,3,4) THEN 1 ELSE 0 END  AS is_open,
     CASE WHEN t.status IN (5,6)     THEN 1 ELSE 0 END  AS is_resolved,

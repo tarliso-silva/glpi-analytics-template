@@ -20,6 +20,7 @@ SELECT
     -- TICKET — campos principais
     -- ─────────────────────────────────────────────────────────────────────────
     t.id                                                AS ticket_id,
+    t.entities_id                                       AS entity_id,
     t.name                                              AS ticket_title,
     t.date                                              AS created_at,
     t.solvedate                                         AS resolved_at,

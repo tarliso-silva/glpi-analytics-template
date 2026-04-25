@@ -12,6 +12,28 @@
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
+-- 0. vw_dim_entity
+--    Dimensão de entidades — use como slicer "Filial" no Power BI.
+--    Relacione entity_id desta view com entity_id de:
+--      vw_fact_tickets, vw_glpi_tickets, vw_dim_asset,
+--      vw_fact_problems, vw_fact_changes, vw_fact_projects
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE VIEW vw_dim_entity AS
+SELECT
+    e.id                AS entity_id,
+    e.name              AS entity_name,
+    e.level             AS entity_level,
+    e.completename      AS entity_full_path,
+    CASE e.level
+        WHEN 0 THEN 'Empresa'
+        WHEN 1 THEN 'Filial'
+        ELSE        'Sub-entidade'
+    END                 AS entity_type
+FROM glpi_entities e
+ORDER BY e.level, e.name;
+
+
+-- ---------------------------------------------------------------------------
 -- 1. vw_entity_overview
 --    Resumo executivo por entidade: tickets, usuários, computadores,
 --    chamados abertos e tempo médio de resolução.

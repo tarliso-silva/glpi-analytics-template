@@ -21,6 +21,7 @@ SELECT
     mfr.name                            AS manufacturer,
     st.name                             AS asset_state,
     loc.name                            AS location,
+    c.entities_id                       AS entity_id,
     u.name                             AS assigned_user,
     ut.name                            AS assigned_tech,
     c.serial                            AS serial_number,
@@ -48,6 +49,7 @@ SELECT
     mfr.name                            AS manufacturer,
     st.name                             AS asset_state,
     loc.name                            AS location,
+    ne.entities_id                      AS entity_id,
     NULL                                AS assigned_user,
     ut.name                            AS assigned_tech,
     ne.serial                           AS serial_number,
@@ -74,6 +76,7 @@ SELECT
     mfr.name                            AS manufacturer,
     st.name                             AS asset_state,
     loc.name                            AS location,
+    m.entities_id                       AS entity_id,
     u.name                             AS assigned_user,
     ut.name                            AS assigned_tech,
     m.serial                            AS serial_number,
@@ -101,6 +104,7 @@ SELECT
     mfr.name                            AS manufacturer,
     st.name                             AS asset_state,
     loc.name                            AS location,
+    p.entities_id                       AS entity_id,
     NULL                                AS assigned_user,
     ut.name                            AS assigned_tech,
     p.serial                            AS serial_number,
@@ -191,6 +195,7 @@ GROUP BY it.itemtype, it.items_id
 CREATE OR REPLACE VIEW `vw_fact_problems` AS
 SELECT
     p.id                                AS problem_id,
+    p.entities_id                       AS entity_id,
     p.name                              AS problem_name,
     p.date                              AS open_date,
     p.solvedate                         AS solve_date,
@@ -241,7 +246,7 @@ LEFT JOIN glpi_problems_tickets pt ON pt.problems_id = p.id
 LEFT JOIN glpi_items_problems   ip ON ip.problems_id = p.id
 WHERE p.is_deleted = 0
 GROUP BY
-    p.id, p.name, p.date, p.solvedate, p.closedate,
+    p.id, p.entities_id, p.name, p.date, p.solvedate, p.closedate,
     YEAR(p.date), MONTH(p.date),
     p.status, p.priority, p.urgency, p.impact,
     cat.name, u_tech.name, u_tech.firstname, u_tech.realname, grp.name
@@ -254,6 +259,7 @@ GROUP BY
 CREATE OR REPLACE VIEW `vw_fact_changes` AS
 SELECT
     c.id                                AS change_id,
+    c.entities_id                       AS entity_id,
     c.name                              AS change_name,
     c.date                              AS open_date,
     c.solvedate                         AS solve_date,
@@ -302,7 +308,7 @@ LEFT JOIN glpi_changes_items   ci  ON ci.changes_id  = c.id
 LEFT JOIN glpi_changetasks     cht ON cht.changes_id = c.id
 WHERE c.is_deleted = 0
 GROUP BY
-    c.id, c.name, c.date, c.solvedate, c.closedate,
+    c.id, c.entities_id, c.name, c.date, c.solvedate, c.closedate,
     YEAR(c.date), MONTH(c.date),
     c.status, c.priority, c.urgency, c.impact,
     cat.name, u_tech.name, u_tech.firstname, u_tech.realname
@@ -315,6 +321,7 @@ GROUP BY
 CREATE OR REPLACE VIEW `vw_fact_projects` AS
 SELECT
     p.id                                AS project_id,
+    p.entities_id                       AS entity_id,
     p.name                              AS project_name,
     p.code                              AS project_code,
     p.priority                          AS priority_code,
